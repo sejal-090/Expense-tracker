@@ -16,7 +16,7 @@ dotenv.config({ path: path.join(__dirname, ".env") });
 
 const app = express();
 
-// 1. MUST BE FIRST: Allow CORS Before Helmet Rules
+// 1. CORS Setup
 const allowedOrigins = [
   process.env.CLIENT_ORIGIN,
   "http://localhost:5173",
@@ -27,7 +27,6 @@ const allowedOrigins = [
 app.use(
   cors({
     origin: (origin, callback) => {
-      // Allow requests with no origin (like mobile apps, curl, postman) or matching allowedOrigins
       if (
         !origin ||
         allowedOrigins.includes(origin) ||
@@ -35,7 +34,7 @@ app.use(
       ) {
         callback(null, true);
       } else {
-        callback(null, true); // Dev environment safety fallback
+        callback(null, true);
       }
     },
     credentials: true,
@@ -44,7 +43,7 @@ app.use(
   }),
 );
 
-// 2. Helmet setup with cross-origin policies configured
+// 2. Helmet Security
 app.use(
   helmet({
     crossOriginResourcePolicy: { policy: "cross-origin" },
@@ -63,6 +62,20 @@ app.use(
   }),
 );
 
+// 3. Database Connection Middleware (Fixes Vercel DB issue)
+app.use(async (req, res, next) => {
+  try {
+    await connectDB();
+    next();
+  } catch (err) {
+    console.error("Database connection failed:", err.message);
+    res
+      .status(500)
+      .json({ success: false, message: "Database connection failed" });
+  }
+});
+
+// 4. API Routes
 app.get("/api/health", (req, res) => {
   res.json({ success: true, status: "ok" });
 });
@@ -78,18 +91,13 @@ app.use((req, res) => {
 
 app.use(errorHandler);
 
-const PORT = process.env.PORT || 5000;
+// 5. Standalone Execution for Local Testing
+if (process.env.NODE_ENV !== "production") {
+  const PORT = process.env.PORT || 5000;
+  app.listen(PORT, () => {
+    console.log(`API running on port ${PORT}`);
+  });
+}
 
-const start = async () => {
-  try {
-    await connectDB();
-    app.listen(PORT, () => {
-      console.log(`API running on port ${PORT}`);
-    });
-  } catch (error) {
-    console.error("Failed to start server:", error.message);
-    process.exit(1);
-  }
-};
-
-start();
+// 6. Export app for Vercel Serverless Function
+module.exports = app;
